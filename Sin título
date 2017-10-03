@@ -1,0 +1,274 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use Auth;
+use App\User;
+use App\City;
+use Carbon\Carbon;
+use App\Http\Requests;
+use Illuminate\Http\Request;
+use Session;
+use Intervention\Image\Facades\Image;
+use Illuminate\Support\Facades\DB;
+use Storage;
+use App\Bricks;
+use App\Transaction;
+use Illuminate\Foundation\Auth\ResetsPasswords;
+use Illuminate\Mail\Message;
+use Illuminate\Support\Facades\Password;
+
+
+class UsersController extends MainAdminController
+{
+	public function __construct()
+    {
+		 $this->middleware('auth');
+
+		 parent::__construct();
+
+    }
+    public function userslist()    {
+
+        if(Auth::User()->usertype!="Admin"){
+
+            \Session::flash('flash_message', 'Access denied!');
+
+            return redirect('admin/dashboard');
+
+        }
+
+        $allusers = User::where('usertype', '!=', 'Admin')->orderBy('id')->get();
+
+
+        return view('admin.pages.users',compact('allusers'));
+    }
+
+    public function addeditUser()    {
+
+        if(Auth::User()->usertype!="Admin"){
+
+            \Session::flash('flash_message', 'Access denied!');
+
+            return redirect('admin/dashboard');
+
+        }
+
+         $city_list = City::orderBy('city_name')->get();
+
+        return view('admin.pages.addeditUser',compact('city_list'));
+    }
+
+		public function transacciones(){
+			$transacciones = Transaction::paginate(10);
+			return view('admin.pages.transacciones',compact('transacciones'));
+		}
+
+		public function viewcsv(){
+
+			if(Auth::User()->usertype!="Admin"){
+
+					\Session::flash('flash_message', 'Access denied!');
+
+					return redirect('admin/dashboard');
+
+			}
+			$productos = Bricks::all();
+
+			 return view('admin.pages.csv',compact('productos'));
+		}
+
+		public function addcsv(Request $request){
+
+			$productos = $request->producto;
+			$comision = $request->comision;
+			$cedula = $request->cedula;
+
+
+$i=0;
+			 	foreach($productos as $producto){
+
+					$bricks = Bricks::find($producto);
+
+
+					$transaccion = new Transaction;
+					$transaccion->user_id= $cedula[$i];
+					$transaccion->status= "1";
+					$transaccion->bricks= $bricks->price;
+					$transaccion->type= $bricks->tipo;
+					$transaccion->packages_id= $bricks->tipo;
+					$transaccion->origen= "Csv";
+					$transaccion->save();
+          
+          Session::flash('flash_message', 'Csv Subido correctamente');
+
+          return redirect()->back();
+
+
+		 }
+
+
+
+
+
+		}
+
+
+
+
+
+
+    public function addnew(Request $request)
+    {
+
+
+    	$data =  \Input::except(array('_token')) ;
+
+	    $inputs = $request->all();
+
+
+
+		if(!empty($inputs['id'])){
+
+            $user = User::findOrFail($inputs['id']);
+						$user_rule_id = 'required';
+
+        }else{
+
+            $user = new User;
+						$user_rule_id = 'required|unique:users';
+						if (!empty($inputs['cc'])) {
+							$user->id = $inputs['cc'];
+							$inputs['id'] = $inputs['cc'];
+							$nuevo = "1";
+						}
+
+
+        }
+				$rule=array(
+							'name' => 'required',
+							'email' => 'required|email|max:75|unique:users,id',
+							'password' => 'min:6|max:15',
+							'image_icon' => 'mimes:jpg,jpeg,gif,png'
+						 );
+
+				 $validator = \Validator::make($data,$rule);
+
+					if ($validator->fails())
+					{
+									return redirect()->back()->withErrors($validator->messages());
+					}
+
+
+		//User image
+		$user_image = $request->file('image_icon');
+
+        if($user_image){
+
+            \File::delete(public_path() .'/upload/members/'.$user->image_icon.'-b.jpg');
+		    \File::delete(public_path() .'/upload/members/'.$user->image_icon.'-s.jpg');
+
+            $tmpFilePath = 'upload/members/';
+
+            $hardPath =  str_slug($inputs['name'], '-').'-'.md5(time());
+
+            $img = Image::make($user_image);
+
+            $img->fit(376, 250)->save($tmpFilePath.$hardPath.'-b.jpg');
+            $img->fit(80, 80)->save($tmpFilePath.$hardPath. '-s.jpg');
+
+            $user->image_icon = $hardPath;
+
+        }
+
+		$user->usertype = $inputs['usertype'];
+		$user->name = $inputs['name'];
+		$user->email = $inputs['email'];
+		$user->phone = $inputs['phone'];
+		$user->address = $inputs['address'];
+		$user->city= $inputs['city'];
+		if (!empty($inputs['referred'])){
+			 $user->referred = $inputs['referred'];
+		}
+
+
+		if($inputs['password'])
+		{
+			$user->password= bcrypt($inputs['password']);
+		}
+
+
+
+	    $user->save();
+
+		if(empty($nuevo)){
+
+            \Session::flash('flash_message', 'Cambios Guardados');
+            return \Redirect::back();
+        }else{
+					$response = Password::sendResetLink($request->only('email'), function (Message $message) {
+							$message->subject('Contraseña de Mir Colombia');
+					$message->sender(getcong('site_email'));
+					});
+					 \Session::flash('flash_message', 'Añadido');
+          return \Redirect::back();
+
+        }
+
+
+    }
+
+    public function editUser($id)
+    {
+    	  if(Auth::User()->usertype!="Admin"){
+
+            \Session::flash('flash_message', 'Access denied!');
+
+            return redirect('admin/dashboard');
+
+        }
+
+          $user = User::findOrFail($id);
+
+					$ladrillos = Transaction::where('user_id','=',$user->id)->where('status','=','1')->where('type','=','1')->sum('cantidad');
+
+
+					//$transacciones = Transaction::where('user_id','=',$user->id)->where('status','=','1')->where('type','!=','1')->get();
+
+					$transacciones = Transaction::where('user_id','=',$user->id)->where('status','=','1')->get();
+
+
+          $city_list = City::orderBy('city_name')->get();
+
+          return view('admin.pages.addeditUser',compact('user','city_list','ladrillos','transacciones'));
+
+    }
+
+    public function delete($id)
+    {
+
+    	if(Auth::User()->usertype!="Admin"){
+
+            \Session::flash('flash_message', 'Access denied!');
+
+            return redirect('admin/dashboard');
+
+        }
+
+        $user = User::findOrFail($id);
+
+		\File::delete(public_path() .'/upload/members/'.$user->image_icon.'-b.jpg');
+		\File::delete(public_path() .'/upload/members/'.$user->image_icon.'-s.jpg');
+
+		$user->delete();
+
+        \Session::flash('flash_message', 'Eliminado');
+
+        return redirect()->back();
+
+    }
+
+
+
+
+}

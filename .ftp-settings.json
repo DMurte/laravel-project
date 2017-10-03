@@ -1,0 +1,16 @@
+{
+"protocol": "ftp",
+"host": "ftp.portalempleandolegalsas.com",
+"port": 21,
+"user": "mircolombia@mircolombia.com",
+"pass": "123456",
+"promptForPass": false,
+"remote": "/mircol",
+"secure": false,
+"secureOptions": null,
+"connTimeout": 10000,
+"pasvTimeout": 10000,
+"keepalive": 10000,
+"watch": [],
+"watchTimeout": 500
+}
